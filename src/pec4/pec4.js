@@ -14,35 +14,72 @@ export class Piece {
 // Exercise 1: GameConfig (1p)
 export class GameConfig {
     constructor() {
+        this.size = 8;
+        this.currentPlayer = 'white';
     }
 
     setSize(newSize) {
+        if (newSize >= 4 && newSize <= 16) {
+            this.size = newSize;
+        } else if (newSize < 4 && newSize >= 0) {
+            this.size = 4;
+        } else if (newSize > 16 && newSize >= 0) {
+            this.size = 16;
+        }
     }
     getPieceRows() {
+        if (this.size < 8) { 
+            return 2;
+        } else if (this.size < 12) {
+            return 3;
+        } else {
+            return 4;
+        }
     }
 
     initialize() {
+        this.currentPlayer = 'white';
     }
 
     switchPlayer() {
+        if (this.currentPlayer === 'white') {
+            this.currentPlayer = 'black';
+        } else {
+            this.currentPlayer = 'white';
+        }
     }
 }
 
 // Exercise 2: Board (1.5p)
 export class Board {
     constructor(gameConfig) {
+        this.gameConfig = gameConfig;
+        this.size = gameConfig.size;
+        //this.board = [][];
     }
 
     generate() {
+        /*pieceRows = this.gameConfig.getPieceRows();
+        for (let row = 0; row < this.size; row++) {
+            for (let col = 0; col < this.size; col++) {
+                if (row <= pieceRows-1 && col % 2 === 0 && row % 2 !== 0) {
+                    this.board[row][col] = new Piece('black');
+                } else if () {
+                    this.board[row][col] = new Piece('white');
+                }
+        } */
     }
 
     getPiece(row, col) {
+        return this.board[row][col];
     }
 
     setPiece(row, col, piece) {
+        this.board[row][col] = piece;
     }
 
     isEmpty(row, col) {
+        return this.board[row][col] === null;
     }
 }
 
