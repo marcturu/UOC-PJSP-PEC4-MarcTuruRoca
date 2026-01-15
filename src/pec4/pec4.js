@@ -19,11 +19,12 @@ export class GameConfig {
     }
 
     setSize(newSize) {
-        if (newSize >= 4 && newSize <= 16) {
-            this.size = newSize;
-        } else if (newSize < 4 && newSize >= 0) {
+        const size = Math.round(newSize);
+        if (size >= 4 && size <= 16) {
+            this.size = size;
+        } else if (size < 4 && size >= 0) {
             this.size = 4;
-        } else if (newSize > 16 && newSize >= 0) {
+        } else if (size > 16 && size >= 0) {
             this.size = 16;
         }
     }
@@ -55,12 +56,13 @@ export class Board {
     constructor(gameConfig) {
         this.gameConfig = gameConfig;
         this.size = gameConfig.size;
-        this.board = [];
+        this.board = Array.from({ length: this.size }, () => Array(this.size).fill(null));
     }
 
     generate() {
-        this.board = Array.from({ length: this.size }, () => Array(this.size).fill(null));
-        
+        // Initialize empty board
+        this.board = Array.from({ length: this.size }, () => Array(this.size).fill(null)); 
+
         const pieceRows = this.gameConfig.getPieceRows();
 
         for (let row = 0; row < this.size; row++) {
@@ -77,10 +79,12 @@ export class Board {
     }
 
     getPiece(row, col) {
+        if (row < 0 || row >= this.size || col < 0 || col >= this.size) return null;
         return this.board[row][col];
     }
 
     setPiece(row, col, piece) {
+        if (row < 0 || row >= this.size || col < 0 || col >= this.size) return;
         this.board[row][col] = piece;
     }
 
@@ -103,7 +107,7 @@ class GameLogic {
         const piece = this.board.getPiece(fromRow, fromCol);
         
         // There must be a piece at the source
-        if (!piece || piece.player !== this.config.currentPlayer) return false;
+        if (!piece) return false;
 
         // Destination must be within bounds
         if (toRow < 0 || toRow >= this.board.size || toCol < 0 || toCol >= this.board.size) return false;
@@ -115,11 +119,11 @@ class GameLogic {
         if ((toRow + toCol) % 2 === 0) return false;
 
         const rowDiff = toRow - fromRow;
-        const colDiff = Matgh.abs(toCol - fromCol);
+        const colDiff = Math.abs(toCol - fromCol);
         // Move must be diagonal by one
-        if (colDiff != 1) return false;
+        if (colDiff !== 1) return false;
 
-        // King can only move one step in any direction (simplification)
+        // King can only move one step in any direction (game simplification)
         if (piece.isKing) {
             return Math.abs(rowDiff) === 1;
         }
@@ -138,7 +142,7 @@ class GameLogic {
         const piece = this.board.getPiece(fromRow, fromCol);
 
         // There must be a piece at the source
-        if (!piece || piece.player != this.config.currentPlayer) return false;
+        if (!piece) return false;
 
         // Destination must be within bounds
         if (toRow < 0 || toRow >= this.board.size || toCol < 0 || toCol >= this.board.size) return false;
@@ -152,7 +156,7 @@ class GameLogic {
         const rowDiff = toRow - fromRow;
         const colDiff = toCol - fromCol;
         // Capture must be diagonal by two
-        if (Math.abs(rowDiff) != 2 || Math.abs(colDiff) != 2) return false;
+        if (Math.abs(rowDiff) !== 2 || Math.abs(colDiff) !== 2) return false;
         
         // There must be an opponent's piece in the middle
         const midRow = fromRow + rowDiff / 2;
@@ -162,7 +166,7 @@ class GameLogic {
         if(!midPiece || midPiece.player === piece.player) return false;
 
         // Non-king pieces can only capture forward
-        if (!piece.king) {
+        if (!piece.isKing) {
             if (piece.player === 'white' && rowDiff !== -2) return false;
             if (piece.player === 'black' && rowDiff !== 2) return false;
         }
@@ -221,13 +225,13 @@ class GameLogic {
                 if (piece.player === 'white') whitePieces++;
                 if (piece.player === 'black') blackPieces++;
 
+                // Non-king pieces can only move forward
                 const directions = piece.isKing ? [-1, 1] : (piece.player === 'white' ? [-1] : [1]);
 
                 for (const dir of directions) {
                     for (const dcol of [-1, 1]) {
-                        const newRow = row + dir;
-                        const newCol = col + dcol;
-                        if (this.isValidMove(row, col, newRow, newCol) || this.isValidCapture(row, col, newRow + dir, newCol + dcol)) {
+                        // Check for valid moves and captures
+                        if (this.isValidMove(row, col, row + dir, col + dcol) || this.isValidCapture(row, col, row + dir * 2, col + dcol * 2)) {
                             if (piece.player === 'white') whiteMoves = true;
                             if (piece.player === 'black') blackMoves = true;
                         }
@@ -251,15 +255,87 @@ export default GameLogic
 // Exercise 4.1: UI (2 points)
 export class UI {
     constructor(gameLogic, onRestart) {
+        this.gameLogic = gameLogic;
+        this.onRestart = onRestart;
+        this.gameBoard = document.getElementById('game-board');
+
+        this.setupSizeInput();
+        this.setupRestartButton();
     }
 
     setupSizeInput() {
+        const container = document.querySelector('.container');
+        let controlsDiv = container.querySelector('.controls');
+        // If controls div doesn't exist, create it
+        if (!controlsDiv) {
+            const newControlsDiv = document.createElement('div');
+            newControlsDiv.className = 'controls';
+            container.insertBefore(newControlsDiv, this.gameBoard);
+            controlsDiv = newControlsDiv;
+        }
+
+        const label = document.createElement('label');
+        label.htmlFor = 'board-size';
+        label.textContent = 'Board size: ';
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.id = 'board-size';
+        input.min = '4';
+        input.max = '16';
+        input.value = this.gameLogic.board.size;
+
+        controlsDiv.appendChild(label);
+        controlsDiv.appendChild(input);
+        
     }
 
     setupRestartButton() {
+        const controlDiv = document.querySelector('.container .controls');
+        const button = document.createElement('button');
+        button.id = 'restart';
+        button.textContent = 'Restart Match';
+        button.addEventListener('click', () => {
+            const gameStatus = document.getElementById('game-status');
+            if (gameStatus) gameStatus.remove();
+            const currentPlayer = document.getElementById('current-player');
+            if (currentPlayer) currentPlayer.remove();
+            this.onRestart();
+        });
+
+        controlDiv.appendChild(button);
     }
 
     renderBoard() {
+        this.gameBoard.innerHTML = '';
+        this.gameBoard.className = 'game.board checkboard';
+        this.gameBoard.style.gridTemplateRows = `repeat(${this.gameLogic.board.size}, 60px)`;
+        this.gameBoard.style.gridTemplateColumns = `repeat(${this.gameLogic.board.size}, 60px)`;
+
+        for (let row = 0; row < this.gameLogic.board.size; row++) {
+            for (let col = 0; col < this.gameLogic.board.size; col++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.classList.add((row + col) % 2 === 0 ? 'light' : 'dark');
+                cell.dataset.row = row;
+                cell.dataset.col = col;
+
+                const piece = this.gameLogic.board.getPiece(row, col);
+                if (piece) {
+                    const pieceDiv = document.createElement('div');
+                    pieceDiv.classList.add('piece', piece.player);
+                    if (piece.isKing) pieceDiv.classList.add('king');
+                    cell.appendChild(pieceDiv);
+                }
+
+                if (this.gameLogic.selectedPiece && this.gameLogic.selectedPiece.row == row && this.gameLogic.selectedPiece.col == col) {
+                    cell.classList.add('selected');
+                }
+
+                cell.addEventListener('click', () => this.handleCellClick(row, col));
+            }
+        }
+        this.showCurrentPlayer();
     }
 
     // Exercise 4.2: UI (1.5 points)
