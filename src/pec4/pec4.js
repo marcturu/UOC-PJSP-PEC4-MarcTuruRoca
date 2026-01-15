@@ -264,16 +264,19 @@ export class UI {
     }
 
     setupSizeInput() {
+        /* Create input display for board size if it doesn't exist */
         const container = document.querySelector('.container');
-        let controlsDiv = container.querySelector('.controls');
-        // If controls div doesn't exist, create it
-        if (!controlsDiv) {
-            const newControlsDiv = document.createElement('div');
-            newControlsDiv.className = 'controls';
-            container.insertBefore(newControlsDiv, this.gameBoard);
-            controlsDiv = newControlsDiv;
+        let controls = container.querySelector('.controls');
+        if (!controls) {
+            controls = document.createElement('div');
+            controls.className = 'controls';
+            container.insertBefore(controls, this.gameBoard);
         }
 
+        // Avoid duplicating the input
+        if (document.getElementById('board-size')) return;
+
+        /* Create label and input */
         const label = document.createElement('label');
         label.htmlFor = 'board-size';
         label.textContent = 'Board size: ';
@@ -285,75 +288,181 @@ export class UI {
         input.max = '16';
         input.value = this.gameLogic.board.size;
 
-        controlsDiv.appendChild(label);
-        controlsDiv.appendChild(input);
-        
+        controls.appendChild(label);
+        controls.appendChild(input);
     }
 
     setupRestartButton() {
-        const controlDiv = document.querySelector('.container .controls');
-        const button = document.createElement('button');
-        button.id = 'restart';
-        button.textContent = 'Restart Match';
-        button.addEventListener('click', () => {
-            const gameStatus = document.getElementById('game-status');
-            if (gameStatus) gameStatus.remove();
-            const currentPlayer = document.getElementById('current-player');
-            if (currentPlayer) currentPlayer.remove();
-            this.onRestart();
-        });
-
-        controlDiv.appendChild(button);
+        /* Create restart button display if it doesn't exist */
+        const controls = document.querySelector('.container .controls');
+        let button = document.getElementById('restart');
+        if (!button) {
+            button = document.createElement('button');
+            button.id = 'restart';
+            button.textContent = 'Restart Match';
+            /* Insert button after board-size input */
+            const input = document.getElementById('board-size');
+            input.parentNode.insertBefore(button, input.nextSibling);
+        }
+        
+        /* Setup click event */
+        button.onclick = () => {
+            document.getElementById('game-status')?.remove();
+            document.getElementById('current-player')?.remove();
+            if (this.onRestart) this.onRestart();
+        };
     }
 
     renderBoard() {
         this.gameBoard.innerHTML = '';
-        this.gameBoard.className = 'game.board checkboard';
-        this.gameBoard.style.gridTemplateRows = `repeat(${this.gameLogic.board.size}, 60px)`;
-        this.gameBoard.style.gridTemplateColumns = `repeat(${this.gameLogic.board.size}, 60px)`;
+        this.gameBoard.className = 'game-board checkerboard';
 
-        for (let row = 0; row < this.gameLogic.board.size; row++) {
-            for (let col = 0; col < this.gameLogic.board.size; col++) {
+        const container = document.querySelector('.container');
+        const size = this.gameLogic.board.size;
+
+        /* Calculate max board width based on container size */
+        const containerWidth = container.clientWidth;
+        const maxBoardWidth = containerWidth - 40; // 20px padding * 2
+
+        // Calculate cell size and board size
+        const cellSize = Math.floor(maxBoardWidth / size);
+        const boardSize = cellSize * size;
+
+        // Configurate grid styles
+        this.gameBoard.style.display = 'grid';
+        this.gameBoard.style.gridTemplateRows = `repeat(${size}, ${cellSize}px)`;
+        this.gameBoard.style.gridTemplateColumns = `repeat(${size}, ${cellSize}px)`;
+        this.gameBoard.style.width = `${boardSize}px`;
+        this.gameBoard.style.height = `${boardSize}px`;
+
+        for (let row = 0; row < size; row++) {
+            for (let col = 0; col < size; col++) {
                 const cell = document.createElement('div');
                 cell.classList.add('cell');
+                // Set light or dark class based on position
                 cell.classList.add((row + col) % 2 === 0 ? 'light' : 'dark');
+                cell.style.width = `${cellSize}px`;
+                cell.style.height = `${cellSize}px`;
                 cell.dataset.row = row;
                 cell.dataset.col = col;
 
                 const piece = this.gameLogic.board.getPiece(row, col);
+                /* Render piece if exists */
                 if (piece) {
                     const pieceDiv = document.createElement('div');
                     pieceDiv.classList.add('piece', piece.player);
                     if (piece.isKing) pieceDiv.classList.add('king');
+
+                    /* Adjust piece size with padding */
+                    const padding = Math.floor(cellSize * 0.15);
+                    pieceDiv.style.width = `${cellSize - 2 * padding}px`;
+                    pieceDiv.style.height = `${cellSize - 2 * padding}px`;
+
                     cell.appendChild(pieceDiv);
                 }
 
-                if (this.gameLogic.selectedPiece && this.gameLogic.selectedPiece.row == row && this.gameLogic.selectedPiece.col == col) {
+                /* Highlight selected piece if exists in this cell */
+                if (this.gameLogic.selectedPiece &&
+                    this.gameLogic.selectedPiece.row === row &&
+                    this.gameLogic.selectedPiece.col === col) {
                     cell.classList.add('selected');
                 }
 
                 cell.addEventListener('click', () => this.handleCellClick(row, col));
+                this.gameBoard.appendChild(cell);
             }
         }
+
         this.showCurrentPlayer();
     }
 
     // Exercise 4.2: UI (1.5 points)
     handleCellClick(row, col) {
+        if (this.gameLogic.gameOver) return;
+
+        const selected = this.gameLogic.selectedPiece;
+        const piece = this.gameLogic.board.getPiece(row, col);
+
+        /* If no piece is selected, select the clicked piece if it belongs to the current player */
+        if (!selected) {
+            if (piece && piece.player === this.gameLogic.config.currentPlayer) {
+                this.gameLogic.selectedPiece = { row, col };
+            }
+        } 
+        /* If a piece is already selected, try to move it to the clicked cell (if not already there) */
+        else {
+            const { row: fromRow, col: fromCol } = selected;
+
+            if (fromRow === row && fromCol === col) {
+                this.gameLogic.selectedPiece = null;
+            } else if (this.gameLogic.movePiece(fromRow, fromCol, row, col)) {
+                this.gameLogic.selectedPiece = null;
+            }
+        }
+
+        this.renderBoard();
+
+        if (this.gameLogic.gameOver) this.showGameStatus(this.gameLogic.winner);
     }
 
     showGameStatus(status) {
+        /* Create game status display if it doesn't exist */
+        let gameStatus = document.getElementById('game-status');
+        if (!gameStatus) {
+            gameStatus = document.createElement('div');
+            gameStatus.id = 'game-status';
+            this.gameBoard.after(gameStatus);
+        }
+
+        gameStatus.textContent = status === 'white' ? 'White wins!' : 'Black wins!';
+
+        setTimeout(() => gameStatus.remove(), 5000);
     }
 
     showCurrentPlayer() {
+        /* Create current player display if it doesn't exist */
+        let currentPlayer = document.getElementById('current-player');
+
+        if (!currentPlayer) {
+            currentPlayer = document.createElement('div');
+            currentPlayer.id = 'current-player';
+            this.gameBoard.before(currentPlayer);
+        }
+
+        const player = this.gameLogic.config.currentPlayer;
+        currentPlayer.textContent = `Turn: ${player.charAt(0).toUpperCase() + player.slice(1)}`;
     }
 }
 
 // Exercise 5: Game (1 point)
 export class Game {
     constructor() {
+        this.config = null;
+        this.board = null;
+        this.gameLogic = null;
+        this.ui = null;
     }
 
     start() {
+        const input = document.getElementById('board-size');
+        const size = input ? parseInt(input.value) : 8;
+
+        this.config = new GameConfig();
+        this.config.setSize(size);
+        this.config.initialize();
+
+        this.board = new Board(this.config);
+        this.board.generate();
+
+        this.gameLogic = new GameLogic(this.board, this.config);
+
+        /* Initialize UI with restart callback */
+        this.ui = new UI(this.gameLogic, () => this.start());
+        this.ui.renderBoard();
+
+        this.gameLogic.checkGameOver();
+        if (this.gameLogic.gameOver) {
+            this.ui.showGameStatus(this.gameLogic.winner);
+        }
     }
 }
