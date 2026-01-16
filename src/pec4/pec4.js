@@ -18,16 +18,19 @@ export class GameConfig {
         this.currentPlayer = 'white';
     }
 
+    /* Sets the board size, ensuring it's an integer between 4 and 16. If it's out of range, set to nearest limit. */
     setSize(newSize) {
         const size = Math.round(newSize);
         if (size >= 4 && size <= 16) {
             this.size = size;
-        } else if (size < 4 && size >= 0) {
+        } else if (size < 4) {
             this.size = 4;
-        } else if (size > 16 && size >= 0) {
+        } else if (size > 16) {
             this.size = 16;
         }
     }
+
+    /* Determines the number of rows to fill with pieces based on board size */
     getPieceRows() {
         if (this.size < 8) { 
             return 2;
@@ -38,10 +41,12 @@ export class GameConfig {
         }
     }
 
+    /* Initializes the starting player */
     initialize() {
         this.currentPlayer = 'white';
     }
 
+    /* Switches the current player */
     switchPlayer() {
         if (this.currentPlayer === 'white') {
             this.currentPlayer = 'black';
@@ -59,14 +64,14 @@ export class Board {
         this.board = Array.from({ length: this.size }, () => Array(this.size).fill(null));
     }
 
+    /* Generates the board with the correct number of black and white basic pieces */
     generate() {
-        // Initialize empty board
         this.board = Array.from({ length: this.size }, () => Array(this.size).fill(null)); 
-
         const pieceRows = this.gameConfig.getPieceRows();
 
         for (let row = 0; row < this.size; row++) {
             for (let col = 0; col < this.size; col++) {
+                // Place pieces on dark squares only (when (row + col) / 2 is odd) and on the top and bottom rows
                 if ((row + col) % 2 === 1) {
                     if (row < pieceRows) {
                     this.board[row][col] = new Piece('black');
@@ -78,16 +83,19 @@ export class Board {
         } 
     }
 
+    /* Returns the piece at the specified position or null if out of bounds */
     getPiece(row, col) {
         if (row < 0 || row >= this.size || col < 0 || col >= this.size) return null;
         return this.board[row][col];
     }
 
+    /* Sets the piece at the specified position or does nothing if out of bounds */
     setPiece(row, col, piece) {
         if (row < 0 || row >= this.size || col < 0 || col >= this.size) return;
         this.board[row][col] = piece;
     }
 
+    /* Checks if the specified position is empty */
     isEmpty(row, col) {
         return this.board[row][col] === null;
     }
@@ -103,6 +111,7 @@ class GameLogic {
         this.winner = null;
     }
 
+    /* Validates a normal move (non-capturing) */
     isValidMove(fromRow, fromCol, toRow, toCol) {
         const piece = this.board.getPiece(fromRow, fromCol);
         
@@ -115,22 +124,23 @@ class GameLogic {
         // Destination must be empty
         if (!this.board.isEmpty(toRow, toCol)) return false;
 
-        // Destination must be on a dark sqaure
+        // Destination must be on a dark square
         if ((toRow + toCol) % 2 === 0) return false;
 
         const rowDiff = toRow - fromRow;
         const colDiff = Math.abs(toCol - fromCol);
-        // Move must be diagonal by one
+        // Move must be a diagonal move by one
         if (colDiff !== 1) return false;
 
-        // King can only move one step in any direction (game simplification)
+        // King can only move one step in any diagonal direction (game simplification)
         if (piece.isKing) {
             return Math.abs(rowDiff) === 1;
         }
-
+        // Non-king white pieces can only move up (-1 in row index)
         if (piece.player === 'white') {
             return rowDiff === -1;
         } 
+        // Non-king black pieces can only move down (+1 in row index)
         if (piece.player === 'black') {
             return rowDiff === 1;
         }
@@ -138,6 +148,7 @@ class GameLogic {
         return false;
     }
 
+    /* Validates a capturing move */
     isValidCapture(fromRow, fromCol, toRow, toCol) {
         const piece = this.board.getPiece(fromRow, fromCol);
 
@@ -165,7 +176,7 @@ class GameLogic {
 
         if(!midPiece || midPiece.player === piece.player) return false;
 
-        // Non-king pieces can only capture forward
+        // Non-king pieces can only capture forward (-2 for white, +2 for black)
         if (!piece.isKing) {
             if (piece.player === 'white' && rowDiff !== -2) return false;
             if (piece.player === 'black' && rowDiff !== 2) return false;
@@ -174,6 +185,7 @@ class GameLogic {
         return true;
     }
 
+    /* Moves a piece from source to destination if the move is valid */
     movePiece(fromRow, fromCol, toRow, toCol) {
         if (this.gameOver) return false;
 
@@ -210,14 +222,16 @@ class GameLogic {
         return true;
     }
 
+    /* Checks if the game is over (no pieces or no moves for a player) */
     checkGameOver() {
         let whitePieces = 0;
         let blackPieces = 0;
         let whiteMoves = false;
         let blackMoves = false;
+        const size = this.board.size;
 
-        for (let row = 0; row < this.board.size; row++) {
-            for (let col = 0; col < this.board.size; col++) {
+        for (let row = 0; row < size; row++) {
+            for (let col = 0; col < size; col++) {
                 const piece = this.board.getPiece(row, col);
 
                 if (!piece) continue;
@@ -225,12 +239,12 @@ class GameLogic {
                 if (piece.player === 'white') whitePieces++;
                 if (piece.player === 'black') blackPieces++;
 
-                // Non-king pieces can only move forward
+                // Non-king pieces can only move forward in rows (-1 for white, +1 for black), kings can move both directions (-1 and +1) 
                 const directions = piece.isKing ? [-1, 1] : (piece.player === 'white' ? [-1] : [1]);
 
                 for (const dir of directions) {
                     for (const dcol of [-1, 1]) {
-                        // Check for valid moves and captures
+                        // Check for valid moves and captures on all diagonals
                         if (this.isValidMove(row, col, row + dir, col + dcol) || this.isValidCapture(row, col, row + dir * 2, col + dcol * 2)) {
                             if (piece.player === 'white') whiteMoves = true;
                             if (piece.player === 'black') blackMoves = true;
@@ -240,6 +254,7 @@ class GameLogic {
             }
         }
 
+        // If there are no more pieces or no more possible moves, the game is over
         if (whitePieces === 0 || !whiteMoves) {
             this.gameOver = true;
             this.winner = 'black';
@@ -263,8 +278,10 @@ export class UI {
         this.setupRestartButton();
     }
 
+
+    /* Creates input display for board size if it doesn't exist */
     setupSizeInput() {
-        /* Create input display for board size if it doesn't exist */
+        //Create input display for board size if it doesn't exist
         const container = document.querySelector('.container');
         let controls = container.querySelector('.controls');
         if (!controls) {
@@ -276,7 +293,7 @@ export class UI {
         // Avoid duplicating the input
         if (document.getElementById('board-size')) return;
 
-        /* Create label and input */
+        // Create label and input
         const label = document.createElement('label');
         label.htmlFor = 'board-size';
         label.textContent = 'Board size: ';
@@ -292,8 +309,9 @@ export class UI {
         controls.appendChild(input);
     }
 
+    /* Creates restart button if it doesn't exist and sets up click event */
     setupRestartButton() {
-        /* Create restart button display if it doesn't exist */
+        // Create restart button display if it doesn't exist
         const controls = document.querySelector('.container .controls');
         let button = document.getElementById('restart');
         if (!button) {
@@ -305,7 +323,7 @@ export class UI {
             input.parentNode.insertBefore(button, input.nextSibling);
         }
         
-        /* Setup click event */
+        // Setup click event
         button.onclick = () => {
             document.getElementById('game-status')?.remove();
             document.getElementById('current-player')?.remove();
@@ -313,6 +331,7 @@ export class UI {
         };
     }
 
+    /* Renders the game board based on the current state of the game */
     renderBoard() {
         this.gameBoard.innerHTML = '';
         this.gameBoard.className = 'game-board checkerboard';
@@ -320,7 +339,7 @@ export class UI {
         const container = document.querySelector('.container');
         const size = this.gameLogic.board.size;
 
-        /* Calculate max board width based on container size */
+        // Calculate max board width based on container size
         const containerWidth = container.clientWidth;
         const maxBoardWidth = containerWidth - 40; // 20px padding * 2
 
@@ -353,7 +372,7 @@ export class UI {
                     pieceDiv.classList.add('piece', piece.player);
                     if (piece.isKing) pieceDiv.classList.add('king');
 
-                    /* Adjust piece size with padding */
+                    // Adjust piece size with padding
                     const padding = Math.floor(cellSize * 0.15);
                     pieceDiv.style.width = `${cellSize - 2 * padding}px`;
                     pieceDiv.style.height = `${cellSize - 2 * padding}px`;
@@ -361,7 +380,7 @@ export class UI {
                     cell.appendChild(pieceDiv);
                 }
 
-                /* Highlight selected piece if exists in this cell */
+                // Highlight selected piece if exists in this cell
                 if (this.gameLogic.selectedPiece &&
                     this.gameLogic.selectedPiece.row === row &&
                     this.gameLogic.selectedPiece.col === col) {
@@ -377,19 +396,20 @@ export class UI {
     }
 
     // Exercise 4.2: UI (1.5 points)
+    /* Handles cell click events for selecting and moving pieces */
     handleCellClick(row, col) {
         if (this.gameLogic.gameOver) return;
 
         const selected = this.gameLogic.selectedPiece;
         const piece = this.gameLogic.board.getPiece(row, col);
 
-        /* If no piece is selected, select the clicked piece if it belongs to the current player */
+        // If no piece is selected, select the clicked piece if it belongs to the current player
         if (!selected) {
             if (piece && piece.player === this.gameLogic.config.currentPlayer) {
                 this.gameLogic.selectedPiece = { row, col };
             }
         } 
-        /* If a piece is already selected, try to move it to the clicked cell (if not already there) */
+        // If a piece is already selected, try to move it to the clicked cell (if not already there)
         else {
             const { row: fromRow, col: fromCol } = selected;
 
@@ -405,8 +425,9 @@ export class UI {
         if (this.gameLogic.gameOver) this.showGameStatus(this.gameLogic.winner);
     }
 
+    /* Displays the game status (winner) */
     showGameStatus(status) {
-        /* Create game status display if it doesn't exist */
+        // Create game status display if it doesn't exist
         let gameStatus = document.getElementById('game-status');
         if (!gameStatus) {
             gameStatus = document.createElement('div');
@@ -419,10 +440,10 @@ export class UI {
         setTimeout(() => gameStatus.remove(), 5000);
     }
 
+    /* Displays the current player's turn */
     showCurrentPlayer() {
-        /* Create current player display if it doesn't exist */
+        // Create current player display if it doesn't exist
         let currentPlayer = document.getElementById('current-player');
-
         if (!currentPlayer) {
             currentPlayer = document.createElement('div');
             currentPlayer.id = 'current-player';
@@ -443,6 +464,7 @@ export class Game {
         this.ui = null;
     }
 
+    /* Starts a new game with the specified board size */
     start() {
         const input = document.getElementById('board-size');
         const size = input ? parseInt(input.value) : 8;
@@ -456,7 +478,6 @@ export class Game {
 
         this.gameLogic = new GameLogic(this.board, this.config);
 
-        /* Initialize UI with restart callback */
         this.ui = new UI(this.gameLogic, () => this.start());
         this.ui.renderBoard();
 
