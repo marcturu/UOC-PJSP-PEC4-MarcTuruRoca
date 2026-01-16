@@ -18,16 +18,15 @@ export class GameConfig {
         this.currentPlayer = 'white';
     }
 
-    /* Sets the board size, ensuring it's an integer between 4 and 16. If it's out of range, set to nearest limit. */
+    /* Sets the board size to a value between 4 and 16 */
     setSize(newSize) {
-        const size = Math.round(newSize);
-        if (size >= 4 && size <= 16) {
-            this.size = size;
-        } else if (size < 4) {
-            this.size = 4;
-        } else if (size > 16) {
-            this.size = 16;
+        const parsed = Number(newSize);
+        if (Number.isNaN(parsed)) {
+            this.size = 8;
+            return;
         }
+        const size = Math.floor(parsed);
+        this.size = Math.min(16, Math.max(4, size));
     }
 
     /* Determines the number of rows to fill with pieces based on board size */
@@ -48,11 +47,7 @@ export class GameConfig {
 
     /* Switches the current player */
     switchPlayer() {
-        if (this.currentPlayer === 'white') {
-            this.currentPlayer = 'black';
-        } else {
-            this.currentPlayer = 'white';
-        }
+        this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white';
     }
 }
 
@@ -61,17 +56,21 @@ export class Board {
     constructor(gameConfig) {
         this.gameConfig = gameConfig;
         this.size = gameConfig.size;
-        this.board = Array.from({ length: this.size }, () => Array(this.size).fill(null));
+        this.board = this._createEmptyBoard();
+    }
+
+    _createEmptyBoard() {
+        return Array.from({ length: this.size }, () => Array(this.size).fill(null));
     }
 
     /* Generates the board with the correct number of black and white basic pieces */
     generate() {
-        this.board = Array.from({ length: this.size }, () => Array(this.size).fill(null)); 
+        this.board = this._createEmptyBoard(); 
         const pieceRows = this.gameConfig.getPieceRows();
 
         for (let row = 0; row < this.size; row++) {
             for (let col = 0; col < this.size; col++) {
-                // Place pieces on dark squares only (when (row + col) / 2 is odd) and on the top and bottom rows
+                // Place pieces on dark squares only (when row + col is odd) and on the top and bottom rows
                 if ((row + col) % 2 === 1) {
                     if (row < pieceRows) {
                     this.board[row][col] = new Piece('black');
@@ -111,21 +110,23 @@ class GameLogic {
         this.winner = null;
     }
 
+    _isBasicDestinationValid(toRow, toCol) {
+        // Destination must be within bounds
+        if (toRow < 0 || toRow >= this.board.size || toCol < 0 || toCol >= this.board.size) return false;
+        // Destination must be empty
+        if (!this.board.isEmpty(toRow, toCol)) return false;
+        // Destination must be on a dark square
+        if ((toRow + toCol) % 2 === 0) return false;
+        return true;
+    }
+
     /* Validates a normal move (non-capturing) */
     isValidMove(fromRow, fromCol, toRow, toCol) {
         const piece = this.board.getPiece(fromRow, fromCol);
-        
         // There must be a piece at the source
         if (!piece) return false;
 
-        // Destination must be within bounds
-        if (toRow < 0 || toRow >= this.board.size || toCol < 0 || toCol >= this.board.size) return false;
-
-        // Destination must be empty
-        if (!this.board.isEmpty(toRow, toCol)) return false;
-
-        // Destination must be on a dark square
-        if ((toRow + toCol) % 2 === 0) return false;
+        if (!this._isBasicDestinationValid(toRow, toCol)) return false;
 
         const rowDiff = toRow - fromRow;
         const colDiff = Math.abs(toCol - fromCol);
@@ -133,17 +134,11 @@ class GameLogic {
         if (colDiff !== 1) return false;
 
         // King can only move one step in any diagonal direction (game simplification)
-        if (piece.isKing) {
-            return Math.abs(rowDiff) === 1;
-        }
+        if (piece.isKing) return Math.abs(rowDiff) === 1;
         // Non-king white pieces can only move up (-1 in row index)
-        if (piece.player === 'white') {
-            return rowDiff === -1;
-        } 
+        if (piece.player === 'white') return rowDiff === -1;
         // Non-king black pieces can only move down (+1 in row index)
-        if (piece.player === 'black') {
-            return rowDiff === 1;
-        }
+        if (piece.player === 'black') return rowDiff === 1;
 
         return false;
     }
@@ -151,18 +146,10 @@ class GameLogic {
     /* Validates a capturing move */
     isValidCapture(fromRow, fromCol, toRow, toCol) {
         const piece = this.board.getPiece(fromRow, fromCol);
-
         // There must be a piece at the source
         if (!piece) return false;
 
-        // Destination must be within bounds
-        if (toRow < 0 || toRow >= this.board.size || toCol < 0 || toCol >= this.board.size) return false;
-        
-        // Destination must be empty
-        if (!this.board.isEmpty(toRow, toCol)) return false;
-    
-        // Destination must be on a dark square
-        if ((toRow + toCol) % 2 === 0) return false;
+        if (!this._isBasicDestinationValid(toRow, toCol)) return false;
 
         const rowDiff = toRow - fromRow;
         const colDiff = toCol - fromCol;
@@ -232,8 +219,9 @@ class GameLogic {
 
         for (let row = 0; row < size; row++) {
             for (let col = 0; col < size; col++) {
-                const piece = this.board.getPiece(row, col);
+                if ((row + col) % 2 === 0) continue; // Skip light squares
 
+                const piece = this.board.getPiece(row, col);
                 if (!piece) continue;
 
                 if (piece.player === 'white') whitePieces++;
@@ -269,6 +257,14 @@ export default GameLogic
 
 // Exercise 4.1: UI (2 points)
 export class UI {
+    static DEFAULT_CELL_SIZE = 60;
+    static MAX_BOARD_PIXELS = 480; // 480px perfect size for 8x8 boards
+    static PIECE_PADDING_RATIO = 0.1;
+    static CONTAINER_PADDING = 40;
+    static MIN_CONTAINER_WIDTH = 300;
+    static MAX_CONTAINER_WIDTH = 900;
+    static GAME_STATUS_TIMEOUT = 5000;
+
     constructor(gameLogic, onRestart) {
         this.gameLogic = gameLogic;
         this.onRestart = onRestart;
@@ -278,10 +274,8 @@ export class UI {
         this.setupRestartButton();
     }
 
-
     /* Creates input display for board size if it doesn't exist */
     setupSizeInput() {
-        //Create input display for board size if it doesn't exist
         const container = document.querySelector('.container');
         let controls = container.querySelector('.controls');
         if (!controls) {
@@ -290,36 +284,36 @@ export class UI {
             container.insertBefore(controls, this.gameBoard);
         }
 
-        // Avoid duplicating the input
-        if (document.getElementById('board-size')) return;
+        // Create board size input if it doesn't exist
+        if (!document.getElementById('board-size')) {
+            const label = document.createElement('label');
+            label.htmlFor = 'board-size';
+            label.textContent = 'Board size: ';
 
-        // Create label and input
-        const label = document.createElement('label');
-        label.htmlFor = 'board-size';
-        label.textContent = 'Board size: ';
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.id = 'board-size';
+            input.min = '4';
+            input.max = '16';
+            input.value = this.gameLogic.board.size;
 
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.id = 'board-size';
-        input.min = '4';
-        input.max = '16';
-        input.value = this.gameLogic.board.size;
-
-        controls.appendChild(label);
-        controls.appendChild(input);
+            controls.appendChild(label);
+            controls.appendChild(input);
+        }
     }
 
     /* Creates restart button if it doesn't exist and sets up click event */
     setupRestartButton() {
-        // Create restart button display if it doesn't exist
-        const controls = document.querySelector('.container .controls');
+        const input = document.getElementById('board-size');
+        if(!input) return;
+
         let button = document.getElementById('restart');
         if (!button) {
             button = document.createElement('button');
             button.id = 'restart';
             button.textContent = 'Restart Match';
+
             /* Insert button after board-size input */
-            const input = document.getElementById('board-size');
             input.parentNode.insertBefore(button, input.nextSibling);
         }
         
@@ -333,26 +327,28 @@ export class UI {
 
     /* Renders the game board based on the current state of the game */
     renderBoard() {
-        this.gameBoard.innerHTML = '';
-        this.gameBoard.className = 'game-board checkerboard';
-
-        const container = document.querySelector('.container');
         const size = this.gameLogic.board.size;
+        const container = document.querySelector('.container');
 
         // Calculate max board width based on container size
-        const containerWidth = container.clientWidth;
-        const maxBoardWidth = containerWidth - 40; // 20px padding * 2
+        let cellSize = UI.DEFAULT_CELL_SIZE;
+        if (size > 8) cellSize = Math.floor(UI.MAX_BOARD_PIXELS / size); 
 
-        // Calculate cell size and board size
-        const cellSize = Math.floor(maxBoardWidth / size);
         const boardSize = cellSize * size;
 
-        // Configurate grid styles
+        // Configurate board styles
+        this.gameBoard.innerHTML = '';
+        this.gameBoard.className = 'game-board checkerboard';
         this.gameBoard.style.display = 'grid';
         this.gameBoard.style.gridTemplateRows = `repeat(${size}, ${cellSize}px)`;
         this.gameBoard.style.gridTemplateColumns = `repeat(${size}, ${cellSize}px)`;
         this.gameBoard.style.width = `${boardSize}px`;
         this.gameBoard.style.height = `${boardSize}px`;
+
+        // Adjust container width based on board size
+        container.style.width = `${boardSize + UI.CONTAINER_PADDING}px`; 
+        container.style.minWidth = `${UI.MIN_CONTAINER_WIDTH}px`;
+        container.style.maxWidth = `${UI.MAX_CONTAINER_WIDTH}px`;
 
         for (let row = 0; row < size; row++) {
             for (let col = 0; col < size; col++) {
@@ -373,7 +369,7 @@ export class UI {
                     if (piece.isKing) pieceDiv.classList.add('king');
 
                     // Adjust piece size with padding
-                    const padding = Math.floor(cellSize * 0.15);
+                    const padding = Math.floor(cellSize * UI.PIECE_PADDING_RATIO);
                     pieceDiv.style.width = `${cellSize - 2 * padding}px`;
                     pieceDiv.style.height = `${cellSize - 2 * padding}px`;
 
@@ -388,6 +384,7 @@ export class UI {
                 }
 
                 cell.addEventListener('click', () => this.handleCellClick(row, col));
+                
                 this.gameBoard.appendChild(cell);
             }
         }
@@ -425,9 +422,8 @@ export class UI {
         if (this.gameLogic.gameOver) this.showGameStatus(this.gameLogic.winner);
     }
 
-    /* Displays the game status (winner) */
+    /* Creates the game status display if it doesn't exist and displays the game status (winner) */
     showGameStatus(status) {
-        // Create game status display if it doesn't exist
         let gameStatus = document.getElementById('game-status');
         if (!gameStatus) {
             gameStatus = document.createElement('div');
@@ -437,12 +433,11 @@ export class UI {
 
         gameStatus.textContent = status === 'white' ? 'White wins!' : 'Black wins!';
 
-        setTimeout(() => gameStatus.remove(), 5000);
+        setTimeout(() => gameStatus.remove(), UI.GAME_STATUS_TIMEOUT);
     }
 
-    /* Displays the current player's turn */
+    /* Creates the current player display if it doesn't exist and displays the current player's turn */
     showCurrentPlayer() {
-        // Create current player display if it doesn't exist
         let currentPlayer = document.getElementById('current-player');
         if (!currentPlayer) {
             currentPlayer = document.createElement('div');
